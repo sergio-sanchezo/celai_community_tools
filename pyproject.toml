@@ -1,0 +1,76 @@
+[tool.poetry]
+name = "celai_community_tools"
+version = "0.1.0"
+description = "A package of reusable tools for Cel.ai assistants"
+authors = ["Cel.ai Community <community@cel.ai>"]
+readme = "README.md"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+]
+packages = [
+    { include = "celai_community_tools" }
+]
+
+[tool.poetry.urls]
+Homepage = "https://github.com/celai-community/celai-community-tools"
+Issues = "https://github.com/celai-community/celai-community-tools/issues"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+celai = ">=0.3.51"
+httpx = ">=0.24.1"
+pydantic = ">=2.0.0"
+loguru = ">=0.7.2"
+python-dotenv = "^1.0.1"
+cryptography = ">=44.0.0"
+PyJWT = ">=2.10.1"
+marko = "^2.1.0"
+
+# Optional dependencies can be included here with appropriate markers
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.2.0"
+pytest-asyncio = ">=0.23.7"
+black = ">=23.0.0"
+isort = ">=5.12.0"
+flake8 = ">=6.0.0"
+mypy = ">=1.0.0"
+
+[tool.poetry.group.gmail.dependencies]
+google-auth = ">=2.0.0"
+google-api-python-client = ">=2.0.0"
+
+[tool.poetry.group.github.dependencies]
+PyGithub = ">=2.0.0"
+
+[tool.poetry.group.weather.dependencies]
+geopy = ">=2.4.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]

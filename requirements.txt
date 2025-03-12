@@ -1,0 +1,19 @@
+# Core dependencies
+celai>=0.3.51
+httpx>=0.24.1
+pydantic>=2.0.0
+loguru>=0.7.2
+python-dotenv>=1.0.1
+cryptography>=44.0.0
+PyJWT>=2.10.1
+marko>=2.1.0
+
+# Gmail integration
+google-auth>=2.0.0
+google-api-python-client>=2.0.0
+
+# GitHub integration
+PyGithub>=2.0.0
+
+# Weather utilities
+geopy>=2.4.1
