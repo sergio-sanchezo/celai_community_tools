@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List
+from typing import Dict, List, Optional, Union
 
 
 @dataclass
@@ -76,4 +76,9 @@ class GitHub(OAuth2):
 
 class OpenWeatherMap(APIKey):
     """OpenWeatherMap-specific API key authorization."""
+    pass
+
+
+class Firecrawl(APIKey):
+    """Firecrawl-specific API key authorization."""
     pass
