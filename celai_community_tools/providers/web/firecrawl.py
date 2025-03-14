@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from cel.assistants.common import Param
 from cel.assistants.function_context import FunctionContext
+from cel.assistants.function_response import FunctionResponse
 from celai_community_tools.providers.web.models import Formats
 from celai_community_tools.tool import tool
 
@@ -33,7 +34,6 @@ except ImportError:
             return {"error": "Firecrawl not installed"}
 
 
-# Define parameters explicitly to avoid List type issues with OpenAI
 @tool(
     name="ScrapeURL",
     desc="Scrape a URL using Firecrawl and return the data in specified formats",
@@ -48,33 +48,27 @@ except ImportError:
         Param(name="timeout", type="integer", description="Timeout in milliseconds for the request", required=False)
     ]
 )
-async def scrape_url(
-    context: FunctionContext,
-    url: str,
-    formats: str = "markdown",
-    only_main_content: bool = True,
-    include_tags: str = None,
-    exclude_tags: str = None,
-    wait_for: int = 10,
-    timeout: int = 30000,
-):
+def scrape_url(params, ctx):
     """
     Scrape a URL using Firecrawl and return the data in specified formats.
-    
-    Args:
-        context: The function context containing the API key.
-        url: URL to scrape.
-        formats: Formats to retrieve as comma-separated string (markdown, html, rawHtml, links, screenshot, screenshot@fullPage).
-        only_main_content: Only return the main content of the page excluding headers, navs, footers, etc.
-        include_tags: List of tags to include in the output, comma-separated.
-        exclude_tags: List of tags to exclude from the output, comma-separated.
-        wait_for: Specify a delay in milliseconds before fetching the content.
-        timeout: Timeout in milliseconds for the request.
     """
-    api_key = context.get_secret("FIRECRAWL_API_KEY")
+    # Extract parameters from the params dict
+    url = params.get("url")
+    formats = params.get("formats", "markdown")
+    only_main_content = params.get("only_main_content", True)
+    include_tags = params.get("include_tags")
+    exclude_tags = params.get("exclude_tags")
+    wait_for = params.get("wait_for", 10)
+    timeout = params.get("timeout", 30000)
+    
+    # Use the FIRECRAWL_API_KEY from environment variables or .env file
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    api_key = os.environ.get("FIRECRAWL_API_KEY")
     
     if not api_key:
-        return "Error: FIRECRAWL_API_KEY secret is required but not provided."
+        return "Error: FIRECRAWL_API_KEY environment variable is required but not found."
     
     # Process format string into list of formats
     format_list = [fmt.strip() for fmt in formats.split(",")]
@@ -99,7 +93,7 @@ async def scrape_url(
     
     try:
         app = FirecrawlApp(api_key=api_key)
-        params = {
+        scrape_params = {
             "formats": valid_formats,
             "onlyMainContent": only_main_content,
             "includeTags": include_tags_list or [],
@@ -107,7 +101,9 @@ async def scrape_url(
             "waitFor": wait_for,
             "timeout": timeout,
         }
-        response = app.scrape_url(url, params=params)
+
+        print(f"Scraping URL: {url} with formats: {valid_formats}")
+        response = app.scrape_url(url, params=scrape_params)
         
         # Format the result for better readability
         formatted_result = {
@@ -133,7 +129,9 @@ async def scrape_url(
             return f"No content was retrieved from {url} in the specified formats."
             
         formatted_result["message"] = f"Successfully scraped content from {url}"
-        return formatted_result
+
+        print(f"Scrape result: {formatted_result}")
+        return str(formatted_result)
         
     except Exception as e:
         return f"Error scraping URL {url}: {str(e)}"
@@ -156,40 +154,31 @@ async def scrape_url(
         Param(name="async_crawl", type="boolean", description="Run the crawl asynchronously", required=False)
     ]
 )
-async def crawl_website(
-    context: FunctionContext,
-    url: str,
-    exclude_paths: str = None,
-    include_paths: str = None,
-    max_depth: int = 2,
-    ignore_sitemap: bool = True,
-    limit: int = 10,
-    allow_backward_links: bool = False,
-    allow_external_links: bool = False,
-    webhook: str = None,
-    async_crawl: bool = True,
-):
+def crawl_website(params, ctx):
     """
     Crawl a website using Firecrawl. If the crawl is asynchronous, returns the crawl ID.
     If the crawl is synchronous, returns the crawl data.
-    
-    Args:
-        context: The function context containing the API key.
-        url: URL to crawl.
-        exclude_paths: URL patterns to exclude from the crawl, comma-separated.
-        include_paths: URL patterns to include in the crawl, comma-separated.
-        max_depth: Maximum depth to crawl relative to the entered URL.
-        ignore_sitemap: Ignore the website sitemap when crawling.
-        limit: Limit the number of pages to crawl.
-        allow_backward_links: Enable navigation to previously linked pages.
-        allow_external_links: Allow following links to external websites.
-        webhook: The URL to send a POST request to when the crawl is completed.
-        async_crawl: Run the crawl asynchronously.
     """
-    api_key = context.get_secret("FIRECRAWL_API_KEY")
+    # Extract parameters from the params dict
+    url = params.get("url")
+    exclude_paths = params.get("exclude_paths")
+    include_paths = params.get("include_paths")
+    max_depth = params.get("max_depth", 2)
+    ignore_sitemap = params.get("ignore_sitemap", True)
+    limit = params.get("limit", 10)
+    allow_backward_links = params.get("allow_backward_links", False)
+    allow_external_links = params.get("allow_external_links", False)
+    webhook = params.get("webhook")
+    async_crawl = params.get("async_crawl", True)
+    
+    # Use the FIRECRAWL_API_KEY from environment variables or .env file
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    api_key = os.environ.get("FIRECRAWL_API_KEY")
     
     if not api_key:
-        return "Error: FIRECRAWL_API_KEY secret is required but not provided."
+        return "Error: FIRECRAWL_API_KEY environment variable is required but not found."
     
     # Process exclude_paths and include_paths
     exclude_paths_list = None
@@ -202,7 +191,7 @@ async def crawl_website(
     
     try:
         app = FirecrawlApp(api_key=api_key)
-        params = {
+        crawl_params = {
             "limit": limit,
             "excludePaths": exclude_paths_list or [],
             "includePaths": include_paths_list or [],
@@ -212,26 +201,28 @@ async def crawl_website(
             "allowExternalLinks": allow_external_links,
         }
         if webhook:
-            params["webhook"] = webhook
+            crawl_params["webhook"] = webhook
 
         if async_crawl:
-            response = app.async_crawl_url(url, params=params)
+            response = app.async_crawl_url(url, params=crawl_params)
             # Remove URL as it's not clickable and only the ID is needed
             if "url" in response:
                 del response["url"]
                 
-            return {
+            result = {
                 "message": f"Async crawl started for {url}",
                 "crawl_id": response.get("crawl_id", "Unknown"),
                 "status": response.get("status", "Unknown"),
             }
+            return str(result)
         else:
-            response = app.crawl_url(url, params=params)
-            return {
+            response = app.crawl_url(url, params=crawl_params)
+            result = {
                 "message": f"Completed crawl for {url}",
                 "pages_crawled": len(response.get("data", [])),
                 "status": response.get("status", "Unknown"),
             }
+            return str(result)
     except Exception as e:
         return f"Error crawling website {url}: {str(e)}"
 
@@ -244,21 +235,21 @@ async def crawl_website(
         Param(name="crawl_id", type="string", description="The ID of the crawl job", required=True)
     ]
 )
-async def get_crawl_status(
-    context: FunctionContext,
-    crawl_id: str,
-):
+def get_crawl_status(params, ctx):
     """
     Get the status of a Firecrawl 'crawl' that is either in progress or recently completed.
-    
-    Args:
-        context: The function context containing the API key.
-        crawl_id: The ID of the crawl job.
     """
-    api_key = context.get_secret("FIRECRAWL_API_KEY")
+    # Extract parameters from the params dict
+    crawl_id = params.get("crawl_id")
+    
+    # Use the FIRECRAWL_API_KEY from environment variables or .env file
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    api_key = os.environ.get("FIRECRAWL_API_KEY")
     
     if not api_key:
-        return "Error: FIRECRAWL_API_KEY secret is required but not provided."
+        return "Error: FIRECRAWL_API_KEY environment variable is required but not found."
     
     try:
         app = FirecrawlApp(api_key=api_key)
@@ -270,11 +261,12 @@ async def get_crawl_status(
             del crawl_status["data"]
             crawl_status["data_message"] = f"Data is available. Use GetCrawlData to retrieve it. Size: {data_size}"
         
-        return {
+        result = {
             "message": f"Crawl status retrieved for ID: {crawl_id}",
             "crawl_id": crawl_id,
             **crawl_status
         }
+        return str(result)
     except Exception as e:
         return f"Error getting crawl status for crawl ID {crawl_id}: {str(e)}"
 
@@ -287,51 +279,54 @@ async def get_crawl_status(
         Param(name="crawl_id", type="string", description="The ID of the crawl job", required=True)
     ]
 )
-async def get_crawl_data(
-    context: FunctionContext,
-    crawl_id: str,
-):
+def get_crawl_data(params, ctx):
     """
     Get the data of a Firecrawl 'crawl' that is either in progress or recently completed.
-    
-    Args:
-        context: The function context containing the API key.
-        crawl_id: The ID of the crawl job.
     """
-    api_key = context.get_secret("FIRECRAWL_API_KEY")
+    # Extract parameters from the params dict
+    crawl_id = params.get("crawl_id")
+    
+    # Use the FIRECRAWL_API_KEY from environment variables or .env file
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    api_key = os.environ.get("FIRECRAWL_API_KEY")
     
     if not api_key:
-        return "Error: FIRECRAWL_API_KEY secret is required but not provided."
+        return "Error: FIRECRAWL_API_KEY environment variable is required but not found."
     
     try:
         app = FirecrawlApp(api_key=api_key)
         crawl_data = app.check_crawl_status(crawl_id)
         
         if "next_url" in crawl_data:
-            return {
+            result = {
                 "message": f"Crawl data is too large for direct retrieval. Use the next_url to paginate.",
                 "crawl_id": crawl_id,
                 "next_url": crawl_data["next_url"],
                 "data_preview": "Data exceeds 10MB limit"
             }
+            return str(result)
         
         # Summarize data rather than returning it all
         if "data" in crawl_data and isinstance(crawl_data["data"], list):
             data_count = len(crawl_data["data"])
             data_sample = crawl_data["data"][:3] if data_count > 0 else []
             
-            return {
+            result = {
                 "message": f"Retrieved {data_count} pages of crawl data for ID: {crawl_id}",
                 "crawl_id": crawl_id,
                 "total_pages": data_count,
                 "sample_pages": data_sample
             }
+            return str(result)
         
-        return {
+        result = {
             "message": f"Retrieved crawl data for ID: {crawl_id}",
             "crawl_id": crawl_id,
             **crawl_data
         }
+        return str(result)
     except Exception as e:
         return f"Error getting crawl data for crawl ID {crawl_id}: {str(e)}"
 
@@ -344,31 +339,32 @@ async def get_crawl_data(
         Param(name="crawl_id", type="string", description="The ID of the asynchronous crawl job to cancel", required=True)
     ]
 )
-async def cancel_crawl(
-    context: FunctionContext,
-    crawl_id: str,
-):
+def cancel_crawl(params, ctx):
     """
     Cancel an asynchronous crawl job that is in progress using the Firecrawl API.
-    
-    Args:
-        context: The function context containing the API key.
-        crawl_id: The ID of the asynchronous crawl job to cancel.
     """
-    api_key = context.get_secret("FIRECRAWL_API_KEY")
+    # Extract parameters from the params dict
+    crawl_id = params.get("crawl_id")
+    
+    # Use the FIRECRAWL_API_KEY from environment variables or .env file
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    api_key = os.environ.get("FIRECRAWL_API_KEY")
     
     if not api_key:
-        return "Error: FIRECRAWL_API_KEY secret is required but not provided."
+        return "Error: FIRECRAWL_API_KEY environment variable is required but not found."
     
     try:
         app = FirecrawlApp(api_key=api_key)
         cancellation_status = app.cancel_crawl(crawl_id)
         
-        return {
+        result = {
             "message": f"Crawl with ID {crawl_id} has been cancelled",
             "crawl_id": crawl_id,
             **cancellation_status
         }
+        return str(result)
     except Exception as e:
         return f"Error cancelling crawl with ID {crawl_id}: {str(e)}"
 
@@ -385,57 +381,55 @@ async def cancel_crawl(
         Param(name="limit", type="integer", description="Maximum number of links to return", required=False)
     ]
 )
-async def map_website(
-    context: FunctionContext,
-    url: str,
-    search: str = None,
-    ignore_sitemap: bool = True,
-    include_subdomains: bool = False,
-    limit: int = 5000,
-):
+def map_website(params, ctx):
     """
     Map a website from a single URL to a map of the entire website.
-    
-    Args:
-        context: The function context containing the API key.
-        url: The base URL to start crawling from.
-        search: Search query to use for mapping.
-        ignore_sitemap: Ignore the website sitemap when crawling.
-        include_subdomains: Include subdomains of the website.
-        limit: Maximum number of links to return.
     """
-    api_key = context.get_secret("FIRECRAWL_API_KEY")
+    # Extract parameters from the params dict
+    url = params.get("url")
+    search = params.get("search")
+    ignore_sitemap = params.get("ignore_sitemap", True)
+    include_subdomains = params.get("include_subdomains", False)
+    limit = params.get("limit", 5000)
+    
+    # Use the FIRECRAWL_API_KEY from environment variables or .env file
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    api_key = os.environ.get("FIRECRAWL_API_KEY")
     
     if not api_key:
-        return "Error: FIRECRAWL_API_KEY secret is required but not provided."
+        return "Error: FIRECRAWL_API_KEY environment variable is required but not found."
     
     try:
         app = FirecrawlApp(api_key=api_key)
-        params = {
+        map_params = {
             "ignoreSitemap": ignore_sitemap,
             "includeSubdomains": include_subdomains,
             "limit": limit,
         }
         if search:
-            params["search"] = search
+            map_params["search"] = search
 
-        map_result = app.map_url(url, params=params)
+        map_result = app.map_url(url, params=map_params)
         
         # Format a more readable response with summary
         if "links" in map_result and isinstance(map_result["links"], list):
             link_count = len(map_result["links"])
             sample_links = map_result["links"][:5] if link_count > 0 else []
             
-            return {
+            result = {
                 "message": f"Successfully mapped {link_count} links from {url}",
                 "url": url,
                 "total_links": link_count,
                 "sample_links": sample_links
             }
+            return str(result)
         
-        return {
+        result = {
             "message": f"Website mapping completed for {url}",
             **map_result
         }
+        return str(result)
     except Exception as e:
         return f"Error mapping website {url}: {str(e)}"

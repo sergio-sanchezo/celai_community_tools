@@ -1,11 +1,9 @@
 import functools
 import inspect
-from typing import Any, Callable, List, Optional, TypeVar, Union
+from typing import Callable, List, TypeVar
 
 from cel.assistants.common import Param
-from cel.assistants.function_context import FunctionContext
-from cel.assistants.function_response import FunctionResponse
-from celai_community_tools.errors import ToolExecutionError
+from cel.assistants.function_response import FunctionResponse, RequestMode
 
 T = TypeVar("T")
 
@@ -18,7 +16,7 @@ def tool(
     params: List[Param] = None,
 ) -> Callable:
     """
-    A decorator that transforms a function into a Cel.ai tool.
+    A decorator that transforms a function into a Cel.ai compatible tool.
     
     Args:
         func: The function to decorate.
@@ -34,49 +32,43 @@ def tool(
     def decorator(func: Callable) -> Callable:
         func_name = str(getattr(func, "__name__", None))
         tool_name = name or func_name
+        tool_description = desc or inspect.cleandoc(func.__doc__ or "")
         
         # Generate params from function signature if not provided
-        celai_params = params or _generate_params_from_signature(func)
+        tool_params = params or _generate_params_from_signature(func)
         
-        # Create a wrapper function in the format expected by Cel.ai
+        # Define a wrapper function that will be registered with Cel.ai
+        # This needs to match Cel.ai's expected function signature
         @functools.wraps(func)
-        async def celai_wrapper(session, params, ctx: FunctionContext):
+        async def celai_wrapper(session, params, ctx):
             try:
-                # Extract parameters from params dict for the original function
-                kwargs = {}
-                sig = inspect.signature(func)
-                for param_name, param in sig.parameters.items():
-                    if param_name == 'context' or param_name == 'ctx':
-                        kwargs[param_name] = ctx
-                    elif param_name in params:
-                        kwargs[param_name] = params[param_name]
-                
-                # Call the original function
+                # Call the original function with the params dict and ctx
                 if inspect.iscoroutinefunction(func):
-                    result = await func(**kwargs)
+                    result = await func(params, ctx)
                 else:
-                    result = func(**kwargs)
+                    result = func(params, ctx)
                 
-                # Handle different return types
+                # If the result is already a FunctionResponse, return it directly
                 if isinstance(result, FunctionResponse):
                     return result
-                elif isinstance(result, str):
-                    return FunctionContext.response_text(result)
-                else:
-                    return FunctionContext.response_text(str(result))
                 
+                # Otherwise, wrap it in a FunctionResponse
+                return FunctionResponse(
+                    text=str(result),
+                    request_mode=RequestMode.SINGLE
+                )
             except Exception as e:
-                error_message = f"Error in {tool_name}: {str(e)}"
-                return FunctionContext.response_text(error_message)
-        
-        # Create the register_with_celai method
+                # Log the error and return an error response
+                error_msg = f"Error in {tool_name}: {str(e)}"
+                return FunctionResponse(
+                    text=error_msg,
+                    request_mode=RequestMode.SINGLE
+                )
+
+        # Add the register_with_celai method to the wrapper
         def register_with_celai(assistant):
             """Register this tool with a Cel.ai assistant."""
-            assistant.function(
-                name=tool_name,
-                desc=desc or inspect.cleandoc(func.__doc__ or ""),
-                params=celai_params
-            )(celai_wrapper)
+            assistant.function(tool_name, tool_description, tool_params)(celai_wrapper)
             
         celai_wrapper.register_with_celai = register_with_celai
         
@@ -97,20 +89,20 @@ def _generate_params_from_signature(func: Callable) -> List[Param]:
     Returns:
         A list of Parameter objects.
     """
-    from typing import get_type_hints
-    
     signature = inspect.signature(func)
-    type_hints = get_type_hints(func)
     
-    # Skip context parameter which is typically the first parameter
+    # Skip the first parameter which is assumed to be the params dict
+    # and the second parameter which is assumed to be the context
     params = []
-    for name, param in signature.parameters.items():
-        # Skip self, ctx, context parameters
-        if name in ['self', 'ctx', 'context', 'session']:
-            continue
-            
+    param_items = list(signature.parameters.items())
+    
+    # Skip the first two parameters (params and ctx)
+    if len(param_items) >= 2:
+        param_items = param_items[2:]
+        
+    for name, param in param_items:
         # Get type information
-        param_type = type_hints.get(name, Any)
+        param_type = param.annotation
         type_name = getattr(param_type, "__name__", str(param_type))
         
         # Convert Python types to string types
