@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 
+from cel.assistants.common import Param
 from cel.assistants.function_context import FunctionContext
 from celai_community_tools.providers.web.models import Formats
 from celai_community_tools.tool import tool
@@ -32,18 +33,28 @@ except ImportError:
             return {"error": "Firecrawl not installed"}
 
 
+# Define parameters explicitly to avoid List type issues with OpenAI
 @tool(
     name="ScrapeURL",
     desc="Scrape a URL using Firecrawl and return the data in specified formats",
-    requires_secrets=["FIRECRAWL_API_KEY"]
+    requires_secrets=["FIRECRAWL_API_KEY"],
+    params=[
+        Param(name="url", type="string", description="URL to scrape", required=True),
+        Param(name="formats", type="string", description="Formats to retrieve as comma-separated string (markdown, html, rawHtml, links, screenshot, screenshot@fullPage). Defaults to 'markdown'.", required=False),
+        Param(name="only_main_content", type="boolean", description="Only return the main content of the page excluding headers, navs, footers, etc.", required=False),
+        Param(name="include_tags", type="string", description="List of tags to include in the output, comma-separated", required=False),
+        Param(name="exclude_tags", type="string", description="List of tags to exclude from the output, comma-separated", required=False),
+        Param(name="wait_for", type="integer", description="Specify a delay in milliseconds before fetching the content", required=False),
+        Param(name="timeout", type="integer", description="Timeout in milliseconds for the request", required=False)
+    ]
 )
 async def scrape_url(
     context: FunctionContext,
     url: str,
-    formats: List[Formats] = None,
+    formats: str = "markdown",
     only_main_content: bool = True,
-    include_tags: List[str] = None,
-    exclude_tags: List[str] = None,
+    include_tags: str = None,
+    exclude_tags: str = None,
     wait_for: int = 10,
     timeout: int = 30000,
 ):
@@ -53,10 +64,10 @@ async def scrape_url(
     Args:
         context: The function context containing the API key.
         url: URL to scrape.
-        formats: Formats to retrieve. Defaults to ['markdown'].
+        formats: Formats to retrieve as comma-separated string (markdown, html, rawHtml, links, screenshot, screenshot@fullPage).
         only_main_content: Only return the main content of the page excluding headers, navs, footers, etc.
-        include_tags: List of tags to include in the output.
-        exclude_tags: List of tags to exclude from the output.
+        include_tags: List of tags to include in the output, comma-separated.
+        exclude_tags: List of tags to exclude from the output, comma-separated.
         wait_for: Specify a delay in milliseconds before fetching the content.
         timeout: Timeout in milliseconds for the request.
     """
@@ -65,15 +76,34 @@ async def scrape_url(
     if not api_key:
         return "Error: FIRECRAWL_API_KEY secret is required but not provided."
     
-    formats = formats or [Formats.MARKDOWN]
+    # Process format string into list of formats
+    format_list = [fmt.strip() for fmt in formats.split(",")]
+    valid_formats = []
+    for fmt in format_list:
+        try:
+            valid_formats.append(Formats(fmt))
+        except ValueError:
+            continue
+    
+    if not valid_formats:
+        valid_formats = [Formats.MARKDOWN]
+        
+    # Process include_tags and exclude_tags
+    include_tags_list = None
+    if include_tags:
+        include_tags_list = [tag.strip() for tag in include_tags.split(",")]
+        
+    exclude_tags_list = None
+    if exclude_tags:
+        exclude_tags_list = [tag.strip() for tag in exclude_tags.split(",")]
     
     try:
         app = FirecrawlApp(api_key=api_key)
         params = {
-            "formats": formats,
+            "formats": valid_formats,
             "onlyMainContent": only_main_content,
-            "includeTags": include_tags or [],
-            "excludeTags": exclude_tags or [],
+            "includeTags": include_tags_list or [],
+            "excludeTags": exclude_tags_list or [],
             "waitFor": wait_for,
             "timeout": timeout,
         }
@@ -82,11 +112,11 @@ async def scrape_url(
         # Format the result for better readability
         formatted_result = {
             "url": url,
-            "formats": [f for f in formats],
+            "formats": [f for f in valid_formats],
         }
         
         # Add specific format data
-        for format_key in formats:
+        for format_key in valid_formats:
             if format_key in response:
                 if format_key == Formats.SCREENSHOT or format_key == Formats.SCREENSHOT_AT_FULL_PAGE:
                     formatted_result[format_key] = "[Base64 screenshot data available]"
@@ -112,13 +142,25 @@ async def scrape_url(
 @tool(
     name="CrawlWebsite",
     desc="Crawl a website using Firecrawl",
-    requires_secrets=["FIRECRAWL_API_KEY"]
+    requires_secrets=["FIRECRAWL_API_KEY"],
+    params=[
+        Param(name="url", type="string", description="URL to crawl", required=True),
+        Param(name="exclude_paths", type="string", description="URL patterns to exclude from the crawl, comma-separated", required=False),
+        Param(name="include_paths", type="string", description="URL patterns to include in the crawl, comma-separated", required=False),
+        Param(name="max_depth", type="integer", description="Maximum depth to crawl relative to the entered URL", required=False),
+        Param(name="ignore_sitemap", type="boolean", description="Ignore the website sitemap when crawling", required=False),
+        Param(name="limit", type="integer", description="Limit the number of pages to crawl", required=False),
+        Param(name="allow_backward_links", type="boolean", description="Enable navigation to previously linked pages", required=False),
+        Param(name="allow_external_links", type="boolean", description="Allow following links to external websites", required=False),
+        Param(name="webhook", type="string", description="The URL to send a POST request to when the crawl is completed", required=False),
+        Param(name="async_crawl", type="boolean", description="Run the crawl asynchronously", required=False)
+    ]
 )
 async def crawl_website(
     context: FunctionContext,
     url: str,
-    exclude_paths: List[str] = None,
-    include_paths: List[str] = None,
+    exclude_paths: str = None,
+    include_paths: str = None,
     max_depth: int = 2,
     ignore_sitemap: bool = True,
     limit: int = 10,
@@ -134,8 +176,8 @@ async def crawl_website(
     Args:
         context: The function context containing the API key.
         url: URL to crawl.
-        exclude_paths: URL patterns to exclude from the crawl.
-        include_paths: URL patterns to include in the crawl.
+        exclude_paths: URL patterns to exclude from the crawl, comma-separated.
+        include_paths: URL patterns to include in the crawl, comma-separated.
         max_depth: Maximum depth to crawl relative to the entered URL.
         ignore_sitemap: Ignore the website sitemap when crawling.
         limit: Limit the number of pages to crawl.
@@ -149,12 +191,21 @@ async def crawl_website(
     if not api_key:
         return "Error: FIRECRAWL_API_KEY secret is required but not provided."
     
+    # Process exclude_paths and include_paths
+    exclude_paths_list = None
+    if exclude_paths:
+        exclude_paths_list = [path.strip() for path in exclude_paths.split(",")]
+        
+    include_paths_list = None
+    if include_paths:
+        include_paths_list = [path.strip() for path in include_paths.split(",")]
+    
     try:
         app = FirecrawlApp(api_key=api_key)
         params = {
             "limit": limit,
-            "excludePaths": exclude_paths or [],
-            "includePaths": include_paths or [],
+            "excludePaths": exclude_paths_list or [],
+            "includePaths": include_paths_list or [],
             "maxDepth": max_depth,
             "ignoreSitemap": ignore_sitemap,
             "allowBackwardLinks": allow_backward_links,
@@ -188,7 +239,10 @@ async def crawl_website(
 @tool(
     name="GetCrawlStatus",
     desc="Get the status of a Firecrawl crawl",
-    requires_secrets=["FIRECRAWL_API_KEY"]
+    requires_secrets=["FIRECRAWL_API_KEY"],
+    params=[
+        Param(name="crawl_id", type="string", description="The ID of the crawl job", required=True)
+    ]
 )
 async def get_crawl_status(
     context: FunctionContext,
@@ -228,7 +282,10 @@ async def get_crawl_status(
 @tool(
     name="GetCrawlData",
     desc="Get the data of a Firecrawl crawl",
-    requires_secrets=["FIRECRAWL_API_KEY"]
+    requires_secrets=["FIRECRAWL_API_KEY"],
+    params=[
+        Param(name="crawl_id", type="string", description="The ID of the crawl job", required=True)
+    ]
 )
 async def get_crawl_data(
     context: FunctionContext,
@@ -282,7 +339,10 @@ async def get_crawl_data(
 @tool(
     name="CancelCrawl",
     desc="Cancel an asynchronous crawl job",
-    requires_secrets=["FIRECRAWL_API_KEY"]
+    requires_secrets=["FIRECRAWL_API_KEY"],
+    params=[
+        Param(name="crawl_id", type="string", description="The ID of the asynchronous crawl job to cancel", required=True)
+    ]
 )
 async def cancel_crawl(
     context: FunctionContext,
@@ -316,7 +376,14 @@ async def cancel_crawl(
 @tool(
     name="MapWebsite",
     desc="Map a website to discover its structure",
-    requires_secrets=["FIRECRAWL_API_KEY"]
+    requires_secrets=["FIRECRAWL_API_KEY"],
+    params=[
+        Param(name="url", type="string", description="The base URL to start crawling from", required=True),
+        Param(name="search", type="string", description="Search query to use for mapping", required=False),
+        Param(name="ignore_sitemap", type="boolean", description="Ignore the website sitemap when crawling", required=False),
+        Param(name="include_subdomains", type="boolean", description="Include subdomains of the website", required=False),
+        Param(name="limit", type="integer", description="Maximum number of links to return", required=False)
+    ]
 )
 async def map_website(
     context: FunctionContext,
