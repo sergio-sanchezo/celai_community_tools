@@ -1,9 +1,11 @@
 import functools
 import inspect
-from typing import Callable, List, TypeVar
+from typing import Callable, List, TypeVar, Optional
 
 from cel.assistants.common import Param
 from cel.assistants.function_response import FunctionResponse, RequestMode
+from celai_community_tools.auth import ToolAuthorization
+from celai_community_tools.errors import AuthorizationError
 
 T = TypeVar("T")
 
@@ -11,8 +13,7 @@ def tool(
     func: Callable = None,
     desc: str = None,
     name: str = None,
-    requires_auth = None,
-    requires_secrets = None,
+    requires_auth: Optional[ToolAuthorization] = None,
     params: List[Param] = None,
 ) -> Callable:
     """
@@ -64,10 +65,17 @@ def tool(
                     text=error_msg,
                     request_mode=RequestMode.SINGLE
                 )
+        func._is_tool = True
 
         # Add the register_with_celai method to the wrapper
         def register_with_celai(assistant):
             """Register this tool with a Cel.ai assistant."""
+            if requires_auth and not requires_auth.validate():
+                 raise AuthorizationError(
+                    f"Authorization failed for tool '{tool_name}'. "
+                    f"Ensure environment variable '{requires_auth.env_var}' is set."
+                )
+
             assistant.function(tool_name, tool_description, tool_params)(celai_wrapper)
             
         celai_wrapper.register_with_celai = register_with_celai

@@ -1,16 +1,22 @@
 import base64
-import json
-import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
-import httpx
-from cel.assistants.function_context import FunctionContext
-from cel.assistants.request_context import RequestContext
 from celai_community_tools.auth import Gmail as GmailAuth
 from celai_community_tools.errors import AuthorizationError, ToolExecutionError
 
 
-async def get_gmail_service(context: FunctionContext) -> httpx.AsyncClient:
+def _import_httpx() -> Any:
+    """Import httpx library."""
+    try:
+        import httpx
+        return httpx
+    except ImportError as e:
+        raise ImportError(
+            "Cannot import httpx, please install with `pip install httpx`."
+        ) from e
+
+
+async def get_gmail_service(context: Any) -> Any:
     """
     Get a configured Gmail API client with the appropriate authorization.
     
@@ -23,7 +29,9 @@ async def get_gmail_service(context: FunctionContext) -> httpx.AsyncClient:
     Raises:
         AuthorizationError: If authorization fails.
     """
-    if not context.authorization or not context.authorization.token:
+    httpx = _import_httpx()
+    
+    if not hasattr(context, "authorization") or not context.authorization or not context.authorization.token:
         raise AuthorizationError("No authorization token provided for Gmail API access")
     
     client = httpx.AsyncClient(

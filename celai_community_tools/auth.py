@@ -1,23 +1,15 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Union
+import os
 
 
 @dataclass
 class ToolAuthorization(ABC):
     """Base class for tool authorization requirements."""
-    
     @abstractmethod
-    def validate(self, token: str) -> bool:
-        """
-        Validate the given token.
-        
-        Args:
-            token: The token to validate.
-            
-        Returns:
-            True if the token is valid, False otherwise.
-        """
+    def validate(self) -> bool:
+        """Validate the authorization credentials."""
         pass
 
 
@@ -32,14 +24,13 @@ class OAuth2(ToolAuthorization):
         return bool(token)
 
 
-@dataclass
 class APIKey(ToolAuthorization):
-    """API key authorization."""
-    
-    def validate(self, token: str) -> bool:
-        # In a real implementation, this would validate the API key
-        return bool(token)
+    """API Key authorization base class."""
+    env_var: str  # Environment variable name for the API key
 
+    def validate(self) -> bool:
+        """Check if the API key is present in the environment."""
+        return os.getenv(self.env_var) is not None
 
 @dataclass
 class BearerToken(ToolAuthorization):
@@ -48,6 +39,31 @@ class BearerToken(ToolAuthorization):
     def validate(self, token: str) -> bool:
         # In a real implementation, this would validate the token
         return bool(token)
+
+
+def _import_google_auth() -> any:
+    """Import Google Auth related dependencies."""
+    try:
+        import google.oauth2.credentials
+        import google_auth_oauthlib.flow
+        import googleapiclient.discovery
+        return (google.oauth2.credentials, google_auth_oauthlib.flow, googleapiclient.discovery)
+    except ImportError as e:
+        raise ImportError(
+            "Cannot import Google Auth libraries. Install with: "
+            "`pip install google-auth google-auth-oauthlib google-api-python-client`."
+        ) from e
+
+
+def _import_github() -> any:
+    """Import GitHub related dependencies."""
+    try:
+        from github import Github
+        return Github
+    except ImportError as e:
+        raise ImportError(
+            "Cannot import PyGithub. Install with: `pip install PyGithub`."
+        ) from e
 
 
 class Gmail(OAuth2):
@@ -61,6 +77,19 @@ class Gmail(OAuth2):
             "https://www.googleapis.com/auth/gmail.modify",
         ]
         super().__init__(scopes or default_scopes)
+        
+    def get_credentials(self, token: str):
+        """
+        Get Google credentials from the token.
+        
+        Args:
+            token: The OAuth2 token.
+            
+        Returns:
+            Google credentials object.
+        """
+        google_creds, _, _ = _import_google_auth()
+        return google_creds.Credentials(token=token, scopes=self.scopes)
 
 
 class GitHub(OAuth2):
@@ -72,13 +101,26 @@ class GitHub(OAuth2):
             "user",
         ]
         super().__init__(scopes or default_scopes)
+        
+    def get_client(self, token: str):
+        """
+        Get GitHub client from the token.
+        
+        Args:
+            token: The OAuth2 token.
+            
+        Returns:
+            GitHub client object.
+        """
+        Github = _import_github()
+        return Github(token)
 
 
 class OpenWeatherMap(APIKey):
     """OpenWeatherMap-specific API key authorization."""
-    pass
+    env_var = "OPENWEATHERMAP_API_KEY"
 
 
 class Firecrawl(APIKey):
     """Firecrawl-specific API key authorization."""
-    pass
+    env_var = "FIRECRAWL_API_KEY"

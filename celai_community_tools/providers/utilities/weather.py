@@ -1,33 +1,35 @@
-import json
-import os
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 from cel.assistants.common import Param
-from cel.assistants.function_context import FunctionContext
-from cel.assistants.function_response import FunctionResponse
 from celai_community_tools.tool import tool
+from celai_community_tools.auth import OpenWeatherMap
 
-# Import httpx library
-try:
-    import httpx
-except ImportError:
-    # Create a fallback for documentation/development without the actual dependency
-    class httpx:
-        class AsyncClient:
-            async def __aenter__(self):
-                return self
-                
-            async def __aexit__(self, *args):
-                pass
-                
-            async def get(self, *args, **kwargs):
-                return {"error": "httpx not installed"}
+
+def _import_dotenv() -> Any:
+    """Import python-dotenv library."""
+    try:
+        from dotenv import load_dotenv
+        return load_dotenv
+    except ImportError as e:
+        raise ImportError(
+            "Cannot import dotenv, please install with `pip install python-dotenv`."
+        ) from e
+
+
+def _import_requests() -> Any:
+    """Import requests library."""
+    try:
+        import requests
+        return requests
+    except ImportError as e:
+        raise ImportError(
+            "Cannot import requests, please install with `pip install requests`."
+        ) from e
 
 
 @tool(
     name="GetWeather",
     desc="Get current weather information for a location",
-    requires_secrets=["OPENWEATHER_API_KEY"],
+    requires_auth=OpenWeatherMap(),
     params=[
         Param(name="location", type="string", description="The location to get weather for (city name, zip code, etc.)", required=True),
         Param(name="units", type="string", description="The unit system to use (metric, imperial, standard). Defaults to metric.", required=False),
@@ -44,13 +46,16 @@ def get_weather(params, ctx):
     Returns:
         A string containing weather information.
     """
+    # Import required dependencies
+    load_dotenv = _import_dotenv()
+    requests = _import_requests()
+    
     # Extract parameters from the params dict
     location = params.get("location")
     units = params.get("units", "metric")
     
     # Use the OPENWEATHER_API_KEY from environment variables or .env file
     import os
-    from dotenv import load_dotenv
     load_dotenv()
     api_key = os.environ.get("OPENWEATHER_API_KEY")
     
@@ -58,9 +63,6 @@ def get_weather(params, ctx):
         return "Error: OPENWEATHER_API_KEY environment variable is required but not found."
     
     try:
-        # Use synchronous request instead of async since the Firecrawl pattern is synchronous
-        import requests
-        
         response = requests.get(
             "https://api.openweathermap.org/data/2.5/weather",
             params={
